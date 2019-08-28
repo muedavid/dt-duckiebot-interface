@@ -10,6 +10,7 @@
     </include>
 
     <!-- Camera Node: reads frames from a physical camera and produces ROS messages -->
+    <!--              publishes info about the camera (e.g., calibration) as ROS messages -->
     <include file="$(find camera_driver)/launch/camera_node.launch">
         <arg name="veh" value="$(arg veh)"/>
         <arg name="param_file_name" value="$(arg param_file_name)"/>

@@ -3,10 +3,19 @@
 
 # Allow files and directories
 !assets
-!packages
+# !packages
 !dependencies-apt.txt
 !dependencies-py.txt
 !launch.sh
 
 # YOUR FILES LISTED BELOW THIS LINE (IMPORTANT: PREPEND !)
 # ----------------------------------------------------------------------------
+!packages/adafruit_drivers
+!packages/camera_driver
+!packages/duckiebot_interface
+!packages/joystick
+!packages/led_emitter
+!packages/rgb_led
+!packages/traffic_light
+!packages/wheels_driver
+!packages/joy_mapper
