@@ -9,7 +9,7 @@ import numpy as np
 
 from duckietown import DTROS
 from picamera import PiCamera
-from sensor_msgs.msg import CompressedImage, CameraInfo
+from sensor_msgs.msg import Image, CompressedImage, CameraInfo
 from sensor_msgs.srv import SetCameraInfo, SetCameraInfoResponse
 
 class CameraNode(DTROS):
@@ -62,7 +62,6 @@ class CameraNode(DTROS):
         self.updateParameters()
 
         # Setup PiCamera
-        self.image_msg = CompressedImage()
         self.camera = PiCamera()
         self.camera.framerate = self.parameters['~framerate']
         self.camera.resolution = (self.parameters['~res_w'], self.parameters['~res_h'])
@@ -95,7 +94,8 @@ class CameraNode(DTROS):
         self.has_published = False
         # self.pub_img = rospy.Publisher("~image/compressed", CompressedImage, queue_size=1)
         # self.pub_camera_info = rospy.Publisher("~camera_info", CameraInfo, queue_size=1)
-        self.pub_img = self.publisher("~image/compressed", CompressedImage, queue_size=1)
+        # self.pub_img = self.publisher("~image/compressed", CompressedImage, queue_size=1)
+        self.pub_img = self.publisher("~image/raw", Image, queue_size=1)
         self.pub_camera_info = self.publisher("~camera_info", CameraInfo, queue_size=1)
 
         # Setup service (for camera_calibration)
@@ -119,7 +119,7 @@ class CameraNode(DTROS):
             gen = self.grabAndPublish(self.stream)
             try:
                 self.camera.capture_sequence(gen,
-                                             'jpeg',
+                                             'bgr',
                                              use_video_port=True,
                                              splitter_port=0)
             except StopIteration:
@@ -160,8 +160,15 @@ class CameraNode(DTROS):
             stream_data = stream.getvalue()
 
             # Generate and publish the compressed image
-            image_msg = CompressedImage()
-            image_msg.format = "jpeg"
+            # image_msg = CompressedImage()
+            # image_msg.format = "jpeg"
+            # image_msg.data = stream_data
+            # image_msg.header.stamp = stamp
+            # image_msg.header.frame_id = self.frame_id
+            # self.pub_img.publish(image_msg)
+
+            # Generate and publish the raw image
+            image_msg = Image()
             image_msg.data = stream_data
             image_msg.header.stamp = stamp
             image_msg.header.frame_id = self.frame_id
