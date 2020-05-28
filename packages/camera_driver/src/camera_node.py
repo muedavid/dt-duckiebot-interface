@@ -7,7 +7,7 @@ import rospy
 import copy
 import numpy as np
 
-from duckietown import DTROS
+from duckietown.dtros import DTROS, NodeType, TopicType
 from picamera import PiCamera
 from sensor_msgs.msg import CompressedImage, CameraInfo
 from sensor_msgs.srv import SetCameraInfo, SetCameraInfoResponse
@@ -52,21 +52,24 @@ class CameraNode(DTROS):
     def __init__(self, node_name):
 
         # Initialize the DTROS parent class
-        super(CameraNode, self).__init__(node_name=node_name)
+        super(CameraNode, self).__init__(node_name=node_name,
+                                         node_type=NodeType.PERCEPTION)
 
         # Add the node parameters to the parameters dictionary and load their default values
-        self.parameters['~framerate'] = None
-        self.parameters['~res_w'] = None
-        self.parameters['~res_h'] = None
-        self.parameters['~exposure_mode'] = None
-        self.updateParameters()
+        self._params = dict()
+        self._params['~framerate'] = rospy.get_param('~framerate')
+        self._params['~res_w'] = rospy.get_param('~res_w')
+        self._params['~res_h'] = rospy.get_param('~res_h')
+        self._params['~exposure_mode'] = rospy.get_param('~exposure_mode')
+        self._paramsChanged = False
+        # self.updateParameters()
 
         # Setup PiCamera
         self.image_msg = CompressedImage()
         self.camera = PiCamera()
-        self.camera.framerate = self.parameters['~framerate']
-        self.camera.resolution = (self.parameters['~res_w'], self.parameters['~res_h'])
-        self.camera.exposure_mode = self.parameters['~exposure_mode']
+        self.camera.framerate = self._params['~framerate']
+        self.camera.resolution = (self._params['~res_w'], self._params['~res_h'])
+        self.camera.exposure_mode = self._params['~exposure_mode']
 
 
         # For intrinsic calibration
@@ -95,8 +98,8 @@ class CameraNode(DTROS):
         self.has_published = False
         # self.pub_img = rospy.Publisher("~image/compressed", CompressedImage, queue_size=1)
         # self.pub_camera_info = rospy.Publisher("~camera_info", CameraInfo, queue_size=1)
-        self.pub_img = self.publisher("~image/compressed", CompressedImage, queue_size=1)
-        self.pub_camera_info = self.publisher("~camera_info", CameraInfo, queue_size=1)
+        self.pub_img = rospy.Publisher("~image/compressed", CompressedImage, queue_size=1)
+        self.pub_camera_info = rospy.Publisher("~camera_info", CameraInfo, queue_size=1)
 
         # Setup service (for camera_calibration)
         self.srv_set_camera_info = rospy.Service("~set_camera_info",
@@ -126,14 +129,14 @@ class CameraNode(DTROS):
                 pass
 
             # Update the camera parameters
-            self.camera.framerate = self.parameters['~framerate']
-            self.camera.resolution = (self.parameters['~res_w'], self.parameters['~res_h'])
-            self.camera.exposure_mode = self.parameters['~exposure_mode']
+            self.camera.framerate = self._params['~framerate']
+            self.camera.resolution = (self._params['~res_w'], self._params['~res_h'])
+            self.camera.exposure_mode = self._params['~exposure_mode']
 
             # Update the camera info parameters
             self.updateCameraParameters()
 
-            self.parametersChanged = False
+            self._paramsChanged = False
             self.log("Parameters updated.")
 
         self.camera.close()
@@ -151,35 +154,36 @@ class CameraNode(DTROS):
                 stream (:obj:`BytesIO`): imagery stream
                 publisher (:obj:`Publisher`): publisher of topic
         """
-        while not (self.parametersChanged or self.is_shutdown or rospy.is_shutdown()):
+        while not (self._paramsChanged or self.is_shutdown or rospy.is_shutdown()):
             yield stream
             # Construct image_msg
             # Grab image from stream
-            stamp = rospy.Time.now()
-            stream.seek(0)
-            stream_data = stream.getvalue()
+            with self.time_phase("Publishing an image"):
+                stamp = rospy.Time.now()
+                stream.seek(0)
+                stream_data = stream.getvalue()
 
-            # Generate and publish the compressed image
-            image_msg = CompressedImage()
-            image_msg.format = "jpeg"
-            image_msg.data = stream_data
-            image_msg.header.stamp = stamp
-            image_msg.header.frame_id = self.frame_id
-            self.pub_img.publish(image_msg)
+                # Generate and publish the compressed image
+                image_msg = CompressedImage()
+                image_msg.format = "jpeg"
+                image_msg.data = stream_data
+                image_msg.header.stamp = stamp
+                image_msg.header.frame_id = self.frame_id
+                self.pub_img.publish(image_msg)
 
-            # Publish the CameraInfo message
-            self.current_camera_info.header.stamp = stamp
-            self.pub_camera_info.publish(self.current_camera_info)
+                # Publish the CameraInfo message
+                self.current_camera_info.header.stamp = stamp
+                self.pub_camera_info.publish(self.current_camera_info)
 
-            # Clear stream
-            stream.seek(0)
-            stream.truncate()
+                # Clear stream
+                stream.seek(0)
+                stream.truncate()
 
-            if not self.has_published:
-                self.log("Published the first image.")
-                self.has_published = True
+                if not self.has_published:
+                    self.log("Published the first image.")
+                    self.has_published = True
 
-            rospy.sleep(rospy.Duration.from_sec(0.001))
+                rospy.sleep(rospy.Duration.from_sec(0.001))
 
     def cbSrvSetCameraInfo(self, req):
         self.log("[cbSrvSetCameraInfo] Callback!")
@@ -236,8 +240,8 @@ class CameraNode(DTROS):
         TODO: Test that this really works.
         """
 
-        scale_width = float(self.parameters['~res_w']) / self.original_camera_info.width
-        scale_height = float(self.parameters['~res_h']) / self.original_camera_info.height
+        scale_width = float(self._params['~res_w']) / self.original_camera_info.width
+        scale_height = float(self._params['~res_h']) / self.original_camera_info.height
 
         scale_matrix = np.ones(9)
         scale_matrix[0] *= scale_width
@@ -246,8 +250,8 @@ class CameraNode(DTROS):
         scale_matrix[5] *= scale_height
 
         # Adjust the camera matrix resolution
-        self.current_camera_info.height = self.parameters['~res_h']
-        self.current_camera_info.width = self.parameters['~res_w']
+        self.current_camera_info.height = self._params['~res_h']
+        self.current_camera_info.width = self._params['~res_w']
 
         # Adjust the K matrix
         self.current_camera_info.K = np.array(self.original_camera_info.K) * scale_matrix
