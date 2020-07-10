@@ -7,7 +7,8 @@ from rgb_led import RGB_LED
 from std_msgs.msg import Float32, Int8, String
 from duckietown_msgs.srv import SetCustomLEDPattern, ChangePattern
 from duckietown_msgs.srv import SetCustomLEDPatternResponse, ChangePatternResponse
-from led_emitter.srv import SetCustomLEDColor, SetCustomLEDColorResponse
+from led_emitter.srv import SetCustomLEDColors, SetCustomLEDColorsResponse
+
 
 
 class LEDEmitterNode(DTROS):
@@ -96,11 +97,13 @@ class LEDEmitterNode(DTROS):
                    the `LED_protocol` parameter (or be `custom` if a custom pattern has been defined via a call to
                    the `~change_led` service.
 
-        ~set_custom_led_color: Allows to set the RGB values of each LED. As exemple: LED1 = [0.2,0.6,0.7], LED2 = [0.4,0.9,0],...,LED5 = [0.2,0.1,0.7] with 1 as maximum.
+        ~set_custom_led_colors: Allows to set the RGB values and intensity of each LED with 255 as maximum. 
+            As example: 
+                LED1 = [255,255,0,100]: yellow light with an intensity of 100/255
+                LED2 = [200,120,50,255]: a custom color at full intensity
             
             input:
-
-                RGB values of each LED (:obj:'SetCustomLEDColor' message)
+                RGB values and intensity of each LED (:obj:'SetCustomLEDColors' message)
     """
 
     def __init__(self, node_name):
@@ -148,7 +151,7 @@ class LEDEmitterNode(DTROS):
         self.srv_set_pattern_ = rospy.Service("~set_pattern",
                                               ChangePattern,
                                               self.srvSetPattern)
-        self.srv_set_custom_LED_Color = rospy.Service("~set_custom_led_color",SetCustomLEDColor,self.srvSetCustomLEDColor)
+        self.srv_set_custom_LED_Color = rospy.Service("~set_custom_led_colors",SetCustomLEDColors,self.srvSetCustomLEDColors)
         # Scale intensity of the LEDs
         for name, c in self.parameters['~LED_protocol']['colors'].items():
             for i in range(3):
@@ -170,24 +173,20 @@ class LEDEmitterNode(DTROS):
 
         self.log("Initialized.")
     
-    def srvSetCustomLEDColor(self,req):
+    def srvSetCustomLEDColors(self,req):
         """Service to set custom RGB values for each LED.
-
-            Sets the RGB values of each LED seperatly. The :obj:`SetCustomLEDColor` message from
+            Sets the RGB values and intensity of each LED seperatly. The :obj:`SetCustomLEDColors` message from
             :obj:`duckietown_msgs` is used for that.
-
             Args:
-                LED_color (SetCustomLEDColor): the requested colors
-
+                LED_colors (SetCustomLEDColors): the requested colors
         """
 
-        self.led.setRGB(1,req.LED1)
-        self.led.setRGB(2,req.LED2)
-        self.led.setRGB(3,req.LED3)
-        self.led.setRGB(4,req.LED4)
-        self.led.setRGB(5,req.LED5)
+        #Data needs to be normalized: division of intensity and LED power of RGB color by 255.0
+        for i in range (5):
+            normalization = req.leds.colors[i].intensity/255.0/255.0
+            self.led.setRGB(i,[req.leds.colors[i].red*normalization, req.leds.colors[i].green*normalization, req.leds.colors[i].blue*normalization])
+        return SetCustomLEDColorsResponse()
 
-        return SetCustomLEDColorResponse()
 
 
     def srvSetCustomLEDPattern(self, req):
